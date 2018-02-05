@@ -68,7 +68,7 @@ generate_debug_colors(std::vector<math::Vec4f> & colors) {
 }
 
 void
-generate_debug_embeddings(std::vector<TextureView> * texture_views) {
+generate_debug_embeddings(std::vector<std::shared_ptr<TextureView>> * texture_views) {
     std::vector<math::Vec4f> colors;
     generate_debug_colors(colors);
 
@@ -76,7 +76,7 @@ generate_debug_embeddings(std::vector<TextureView> * texture_views) {
     for (std::size_t i = 0; i < texture_views->size(); ++i) {
         math::Vec4f float_color =  colors[i % colors.size()];
 
-        TextureView * texture_view = &(texture_views->at(i));
+        TextureView * texture_view = texture_views->at(i).get();
 
         /* Determine font color depending on luminance of background. */
         float luminance = math::interpolate(float_color[0], float_color[1], float_color[2], 0.30f, 0.59f, 0.11f);

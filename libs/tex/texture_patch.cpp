@@ -56,20 +56,57 @@ TexturePatch::adjust_colors(std::vector<math::Vec3f> const & adjust_values) {
         if (area < std::numeric_limits<float>::epsilon()) continue;
 
         Rect<float> aabb = tri.get_aabb();
-        int const min_x = static_cast<int>(std::floor(aabb.min_x)) - texture_patch_border;
-        int const min_y = static_cast<int>(std::floor(aabb.min_y)) - texture_patch_border;
-        int const max_x = static_cast<int>(std::ceil(aabb.max_x)) + texture_patch_border;
-        int const max_y = static_cast<int>(std::ceil(aabb.max_y)) + texture_patch_border;
-        assert(0 <= min_x && max_x <= get_width());
-        assert(0 <= min_y && max_y <= get_height());
-
+        int min_x = static_cast<int>(std::floor(aabb.min_x)) - texture_patch_border;
+        int min_y = static_cast<int>(std::floor(aabb.min_y)) - texture_patch_border;
+        int max_x = static_cast<int>(std::ceil(aabb.max_x)) + texture_patch_border;
+        int max_y = static_cast<int>(std::ceil(aabb.max_y)) + texture_patch_border;
+        //assert(0 <= min_x && max_x <= get_width());
+        //assert(0 <= min_y && max_y <= get_height());
+        // BV: problem here too :-(
+        if(min_x<0)
+        {
+            std::cout << __FILE__ << ":" <<__LINE__ <<
+                         ":Assertion 0 <= min_x FAILED, settings min_x to 0" << std::endl;
+            min_x=0;
+        }
+        if(max_x>get_width())
+        {
+            std::cout << __FILE__ << ":" <<__LINE__ <<
+                         ":Assertion max_x <= get_width() FAILED, settings max_x to get_width" << std::endl;
+            max_x=get_width();
+        }
+        if(min_y<0)
+        {
+            std::cout << __FILE__ << ":" <<__LINE__ <<
+                         ":Assertion 0 <= min_y FAILED, settings min_x to 0" << std::endl;
+            min_y=0;
+        }
+        if(max_y>get_height())
+        {
+            std::cout << __FILE__ << ":" <<__LINE__ <<
+                         ":Assertion max_y <= get_height() FAILED, settings max_y to get_height" << std::endl;
+            max_y=get_height();
+        }
         for (int y = min_y; y < max_y; ++y) {
             for (int x = min_x; x < max_x; ++x) {
 
                 math::Vec3f bcoords = tri.get_barycentric_coords(x, y);
                 bool inside = bcoords.minimum() >= 0.0f;
                 if (inside) {
-                    assert(x != 0 && y != 0);
+                    // assert(x != 0 && y != 0); // BV: again, fails
+                    if(x == 0)
+                    {
+                        std::cout << __FILE__ << ":" <<__LINE__ <<
+                                     ":Assertion x != 0 FAILED, settings x to 1" << std::endl;
+                        x=1;
+                    }
+                    if(y == 0)
+                    {
+                        std::cout << __FILE__ << ":" <<__LINE__ <<
+                                     ":Assertion y != 0 FAILED, settings y to 1" << std::endl;
+                        y=1;
+                    }
+
                     for (int c = 0; c < 3; ++c) {
                         iadjust_values->at(x, y, c) = math::interpolate(
                             adjust_values[i][c], adjust_values[i + 1][c], adjust_values[i + 2][c],

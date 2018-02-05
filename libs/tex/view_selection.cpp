@@ -17,6 +17,7 @@ TEX_NAMESPACE_BEGIN
 bool IGNORE_LUMINANCE = false;
 
 /** Potts model */
+//MB: 1*MRF_MAX_ENERGYTERM !!!
 float
 potts(int, int, int l1, int l2) {
     return l1 == l2 && l1 != 0 && l2 != 0 ? 0 : 1 * MRF_MAX_ENERGYTERM;

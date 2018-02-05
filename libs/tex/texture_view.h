@@ -20,6 +20,14 @@
 #include "tri.h"
 #include "settings.h"
 
+//#define _WIN32
+//#include "Orientation/modeleprojection.hpp"
+//#include "Orientation/modeleprojectionconique.hpp"
+//#undef _WIN32
+
+//using OrientationMATIS::ModeleProjection;
+//using namespace OrientationMATIS;
+
 TEX_NAMESPACE_BEGIN
 
 /** Struct containing the quality and mean color of a face within a view. */
@@ -37,15 +45,20 @@ struct FaceProjectionInfo {
   * Class representing a view with specialized functions for texturing.
   */
 class TextureView {
-    private:
+    protected:
         std::size_t id;
 
         math::Vec3f pos;
         math::Vec3f viewdir;
-        math::Matrix3f projection;
-        math::Matrix4f world_to_cam;
         int width;
         int height;
+        /*-----------------------------------------
+
+        math::Matrix3f projection;
+        math::Matrix4f world_to_cam;
+
+
+        ----------------------------------------*/
         std::string image_file;
         mve::ByteImage::Ptr image;
         mve::ByteImage::Ptr gradient_magnitude;
@@ -55,9 +68,10 @@ class TextureView {
     public:
         /** Returns the id of the TexureView which is consistent for every run. */
         std::size_t get_id(void) const;
-
+       /*---------------------------------------------------*/
         /** Returns the 2D pixel coordinates of the given vertex projected into the view. */
-        math::Vec2f get_pixel_coords(math::Vec3f const & vertex) const;
+        virtual math::Vec2f get_pixel_coords(math::Vec3f const & vertex) const=0;
+      /*-----------------------------------------------------*/
         /** Returns the RGB pixel values [0, 1] for the given vertex projected into the view, calculated by linear interpolation. */
         math::Vec3f get_pixel_values(math::Vec3f const & vertex) const;
 
@@ -73,8 +87,8 @@ class TextureView {
         /** Returns the RGB pixel values [0, 1] for the give pixel location. */
         math::Vec3f get_pixel_values(math::Vec2f const & pixel) const;
 
-        /** Constructs a TextureView from the give mve::CameraInfo containing the given image. */
-        TextureView(std::size_t id, mve::CameraInfo const & camera, std::string const & image_file);
+        /** Constructs a TextureView from the give mve::CameraInfo containing the given image.*/
+        TextureView(std::size_t id, std::string const & image_file);
 
         /** Returns the position. */
         math::Vec3f get_pos(void) const;
@@ -116,7 +130,12 @@ class TextureView {
 
         void
         export_validity_mask(std::string const & filename) const;
+
+        /*----------------------------------------------*/
+        virtual ~ TextureView();
 };
+/*----------------------------------------------*/
+inline TextureView::~TextureView(){}
 
 
 inline std::size_t
@@ -157,13 +176,13 @@ TextureView::inside(math::Vec3f const & v1, math::Vec3f const & v2, math::Vec3f 
     math::Vec2f p3 = get_pixel_coords(v3);
     return valid_pixel(p1) && valid_pixel(p2) && valid_pixel(p3);
 }
-
+/*
 inline math::Vec2f
 TextureView::get_pixel_coords(math::Vec3f const & vertex) const {
     math::Vec3f pixel = projection * world_to_cam.mult(vertex, 1.0f);
     pixel /= pixel[2];
     return math::Vec2f(pixel[0] - 0.5f, pixel[1] - 0.5f);
-}
+}*/
 
 inline math::Vec3f
 TextureView::get_pixel_values(math::Vec3f const & vertex) const {

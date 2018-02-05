@@ -48,12 +48,12 @@ photometric_outlier_detection(std::vector<FaceProjectionInfo> * infos, Settings 
 
     float outlier_removal_factor = std::numeric_limits<float>::signaling_NaN();
     switch (settings.outlier_removal) {
-        case OUTLIER_REMOVAL_NONE: return true;
-        case OUTLIER_REMOVAL_GAUSS_CLAMPING:
-            outlier_removal_factor = 1.0f;
+    case OUTLIER_REMOVAL_NONE: return true;
+    case OUTLIER_REMOVAL_GAUSS_CLAMPING:
+        outlier_removal_factor = 1.0f;
         break;
-        case OUTLIER_REMOVAL_GAUSS_DAMPING:
-            outlier_removal_factor = 0.2f;
+    case OUTLIER_REMOVAL_GAUSS_DAMPING:
+        outlier_removal_factor = 0.2f;
         break;
     }
 
@@ -116,12 +116,12 @@ photometric_outlier_detection(std::vector<FaceProjectionInfo> * infos, Settings 
         double gauss_value = multi_gauss_unnormalized(color, var_mean, covariance_inv);
         assert(0.0 <= gauss_value && gauss_value <= 1.0);
         switch(settings.outlier_removal) {
-            case OUTLIER_REMOVAL_NONE: return true;
-            case OUTLIER_REMOVAL_GAUSS_DAMPING:
-                info.quality *= gauss_value;
+        case OUTLIER_REMOVAL_NONE: return true;
+        case OUTLIER_REMOVAL_GAUSS_DAMPING:
+            info.quality *= gauss_value;
             break;
-            case OUTLIER_REMOVAL_GAUSS_CLAMPING:
-                if (gauss_value < gauss_rejection_threshold) info.quality = 0.0f;
+        case OUTLIER_REMOVAL_GAUSS_CLAMPING:
+            if (gauss_value < gauss_rejection_threshold) info.quality = 0.0f;
             break;
         }
     }
@@ -130,8 +130,8 @@ photometric_outlier_detection(std::vector<FaceProjectionInfo> * infos, Settings 
 
 void
 calculate_face_projection_infos(mve::TriangleMesh::ConstPtr mesh,
-    std::vector<TextureView> * texture_views, Settings const & settings,
-    FaceProjectionInfos * face_projection_infos) {
+                                std::vector<std::shared_ptr<TextureView>> * texture_views, Settings const & settings,
+                                FaceProjectionInfos * face_projection_infos) {
 
     std::vector<unsigned int> const & faces = mesh->get_faces();
     std::vector<math::Vec3f> const & vertices = mesh->get_vertices();
@@ -143,17 +143,26 @@ calculate_face_projection_infos(mve::TriangleMesh::ConstPtr mesh,
     std::cout << "\tBuilding BVH from " << faces.size() / 3 << " faces... " << std::flush;
     BVHTree bvh_tree(faces, vertices);
     std::cout << "done. (Took: " << timer.get_elapsed() << " ms)" << std::endl;
+    std::cout << "settings.geometric_visibility_test=" << settings.geometric_visibility_test << std::endl;
+
+    unsigned int backface = 0;
+    unsigned int backview = 0;
+    unsigned int viewangle = 0;
+    unsigned int projection = 0;
+    unsigned int raytracing_test = 0;
+    unsigned int zero_quality = 0;
+    unsigned int ok = 0;
 
     ProgressCounter view_counter("\tCalculating face qualities", num_views);
-    #pragma omp parallel
+#pragma omp parallel
     {
         std::vector<std::pair<std::size_t, FaceProjectionInfo> > projected_face_view_infos;
 
-        #pragma omp for schedule(dynamic)
+#pragma omp for schedule(dynamic)
         for (std::uint16_t j = 0; j < static_cast<std::uint16_t>(num_views); ++j) {
             view_counter.progress<SIMPLE>();
 
-            TextureView * texture_view = &texture_views->at(j);
+            TextureView * texture_view = texture_views->at(j).get();
             texture_view->load_image();
             texture_view->generate_validity_mask();
 
@@ -163,8 +172,9 @@ calculate_face_projection_infos(mve::TriangleMesh::ConstPtr mesh,
             }
 
             math::Vec3f const & view_pos = texture_view->get_pos();
+            //std::cout << "\n ---------- view_pos=" << view_pos << std::endl;
             math::Vec3f const & viewing_direction = texture_view->get_viewing_direction();
-
+            //std::cout << "viewing_direction=" << viewing_direction << std::endl;
             for (std::size_t i = 0; i < faces.size(); i += 3) {
                 std::size_t face_id = i / 3;
 
@@ -175,28 +185,50 @@ calculate_face_projection_infos(mve::TriangleMesh::ConstPtr mesh,
                 math::Vec3f const face_center = (v1 + v2 + v3) / 3.0f;
 
                 /* Check visibility and compute quality */
-
-                math::Vec3f view_to_face_vec = (face_center - view_pos).normalized();
                 math::Vec3f face_to_view_vec = (view_pos - face_center).normalized();
 
                 /* Backface and basic frustum culling */
                 float viewing_angle = face_to_view_vec.dot(face_normal);
-                if (viewing_angle < 0.0f || viewing_direction.dot(view_to_face_vec) < 0.0f)
+                if(false) // i%300000==0
+                {
+                    std::cout << "j=" << j << " i=" << i << "/" << faces.size() << std::endl;
+                    std::cout << "face_normal=" << face_normal << std::endl;
+                    std::cout << "face_center=" << face_center << std::endl;
+                    std::cout << "face_to_view_vec=" << face_to_view_vec << std::endl;
+                    std::cout << "viewing_dp=" << viewing_angle << std::endl;
+                    std::cout << "viewing_angle=" << MATH_RAD2DEG(std::acos(viewing_angle)) << std::endl;
+                    std::cout << "viewing_direction.dot(view_to_face_vec)=" << viewing_direction.dot(face_to_view_vec) << std::endl;
+                }
+                // Face is behind the current view
+                if (viewing_direction.dot(face_to_view_vec) > 0.0f)
+                {
+                    backview++;
                     continue;
-
+                }
+                // Face is seen from behind
+                if (viewing_angle < 0.0f)
+                {
+                    backface++;
+                    continue;
+                }
+                // Face is seen with a bad angle
                 if (std::acos(viewing_angle) > MATH_DEG2RAD(75.0f))
+                {
+                    viewangle++;
                     continue;
-
-                /* Projects into the valid part of the TextureView? */
+                }
+                // Face does not project into the valid part of the TextureView
                 if (!texture_view->inside(v1, v2, v3))
+                {
+                    projection++;
                     continue;
-
-                if (settings.geometric_visibility_test) {
+                }
+                if (settings.geometric_visibility_test)
+                {
                     /* Viewing rays do not collide? */
                     bool visible = true;
                     math::Vec3f const * samples[] = {&v1, &v2, &v3};
                     // TODO: random monte carlo samples...
-
                     for (std::size_t k = 0; k < sizeof(samples) / sizeof(samples[0]); ++k) {
                         BVHTree::Ray ray;
                         ray.origin = *samples[k];
@@ -211,23 +243,27 @@ calculate_face_projection_infos(mve::TriangleMesh::ConstPtr mesh,
                             break;
                         }
                     }
-                    if (!visible) continue;
+                    // (at least one vertex of) face is occluded
+                    if (!visible)
+                    {
+                        raytracing_test++;
+                        continue;
+                    }
                 }
-
-                FaceProjectionInfo info = {j, 0.0f, math::Vec3f(0.0f, 0.0f, 0.0f)};
-
                 /* Calculate quality. */
+                FaceProjectionInfo info = {j, 0.0f, math::Vec3f(0.0f, 0.0f, 0.0f)};
                 texture_view->get_face_info(v1, v2, v3, &info, settings);
-
-                if (info.quality == 0.0) continue;
-
+                if (info.quality == 0.0)
+                {
+                    zero_quality++;
+                    continue;
+                }
                 /* Change color space. */
                 mve::image::color_rgb_to_ycbcr(*(info.mean_color));
-
                 std::pair<std::size_t, FaceProjectionInfo> pair(face_id, info);
                 projected_face_view_infos.push_back(pair);
+                ok++;
             }
-
             texture_view->release_image();
             texture_view->release_validity_mask();
             if (settings.data_term == DATA_TERM_GMI) {
@@ -235,12 +271,12 @@ calculate_face_projection_infos(mve::TriangleMesh::ConstPtr mesh,
             }
             view_counter.inc();
         }
-
         //std::sort(projected_face_view_infos.begin(), projected_face_view_infos.end());
 
-        #pragma omp critical
+#pragma omp critical
         {
-            for (std::size_t i = projected_face_view_infos.size(); 0 < i; --i) {
+            for (std::size_t i = projected_face_view_infos.size(); 0 < i; --i)
+            {
                 std::size_t face_id = projected_face_view_infos[i - 1].first;
                 FaceProjectionInfo const & info = projected_face_view_infos[i - 1].second;
                 face_projection_infos->at(face_id).push_back(info);
@@ -248,16 +284,23 @@ calculate_face_projection_infos(mve::TriangleMesh::ConstPtr mesh,
             projected_face_view_infos.clear();
         }
     }
+    std::cout << "\n" << backface << " faces seen from behind" << std::endl;
+    std::cout << backview << " faces behind the current view: " << std::endl;
+    std::cout << viewangle << " faces seen with a bad angle: " << std::endl;
+    std::cout << projection << " faces not projecting into the valid part of the TextureView: " << std::endl;
+    std::cout << zero_quality << " faces have zero quality" << std::endl;
+    std::cout << raytracing_test << " faces are occluded" << std::endl;
+    std::cout << ok << " faces are OK" << std::endl;
 }
 
 void
 postprocess_face_infos(Settings const & settings,
-        FaceProjectionInfos * face_projection_infos,
-        DataCosts * data_costs) {
+                       FaceProjectionInfos * face_projection_infos,
+                       DataCosts * data_costs) {
 
     ProgressCounter face_counter("\tPostprocessing face infos",
-        face_projection_infos->size());
-    #pragma omp parallel for schedule(dynamic)
+                                 face_projection_infos->size());
+#pragma omp parallel for schedule(dynamic)
     for (std::size_t i = 0; i < face_projection_infos->size(); ++i) {
         face_counter.progress<SIMPLE>();
 
@@ -266,8 +309,8 @@ postprocess_face_infos(Settings const & settings,
             photometric_outlier_detection(&infos, settings);
 
             infos.erase(std::remove_if(infos.begin(), infos.end(),
-                [](FaceProjectionInfo const & info) -> bool {return info.quality == 0.0f;}),
-                infos.end());
+                                       [](FaceProjectionInfo const & info) -> bool {return info.quality == 0.0f;}),
+                    infos.end());
         }
         std::sort(infos.begin(), infos.end());
 
@@ -293,6 +336,8 @@ postprocess_face_infos(Settings const & settings,
 
             /* Clamp to percentile and normalize. */
             float normalized_quality = std::min(1.0f, info.quality / percentile);
+            //MB: I think this is where we should fix the regularisation parameter * MRF_MAX_ENERGYTERM
+            //MRF_MAX_ENERGYTERM: need to be evaluated
             float data_cost = (1.0f - normalized_quality) * MRF_MAX_ENERGYTERM;
             data_costs->set_value(i, info.view_id, data_cost);
         }
@@ -306,8 +351,8 @@ postprocess_face_infos(Settings const & settings,
 }
 
 void
-calculate_data_costs(mve::TriangleMesh::ConstPtr mesh, std::vector<TextureView> * texture_views,
-    Settings const & settings, DataCosts * data_costs) {
+calculate_data_costs(mve::TriangleMesh::ConstPtr mesh, std::vector<std::shared_ptr<TextureView>> * texture_views,
+                     Settings const & settings, DataCosts * data_costs) {
 
     std::size_t const num_faces = mesh->get_faces().size() / 3;
     std::size_t const num_views = texture_views->size();
@@ -317,7 +362,7 @@ calculate_data_costs(mve::TriangleMesh::ConstPtr mesh, std::vector<TextureView> 
     if (num_views > std::numeric_limits<std::uint16_t>::max())
         throw std::runtime_error("Exeeded maximal number of views");
     static_assert(MRF_MAX_ENERGYTERM <= std::numeric_limits<float>::max(),
-        "MRF_MAX_ENERGYTERM has to be within float limits");
+                  "MRF_MAX_ENERGYTERM has to be within float limits");
 
     FaceProjectionInfos face_projection_infos(num_faces);
     calculate_face_projection_infos(mesh, texture_views, settings, &face_projection_infos);

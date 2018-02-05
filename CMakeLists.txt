@@ -13,10 +13,16 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED yes)
 
 set(RESEARCH "OFF" CACHE BOOL "Use the gco library for Multi-Label Optimization, which is licensed only for research purposes!")
+
 if(RESEARCH)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DRESEARCH=1")
 endif()
-
+#----------------------------------------
+set(TEXTURE_VIEW_LIBORI "OFF" CACHE BOOL "Use Libori orientations instead of mvs")
+if(TEXTURE_VIEW_LIBORI)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTEXTURE_VIEW_LIBORI=1")
+endif()
+#-----------------------------------------
 FIND_PACKAGE(OpenMP)
 if(OPENMP_FOUND)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
@@ -31,7 +37,7 @@ endif()
 find_package(PNG REQUIRED)
 find_package(JPEG REQUIRED)
 find_package(TIFF REQUIRED)
-
+#find_package(ORIENTATION)
 add_subdirectory(elibs)
 include_directories(SYSTEM
     ${CMAKE_SOURCE_DIR}/elibs/rayint/libs
@@ -52,6 +58,20 @@ if(RESEARCH)
     include_directories(SYSTEM ${CMAKE_SOURCE_DIR}/elibs/gco)
     link_directories(${CMAKE_BINARY_DIR}/elibs/ext_gco/src/ext_gco-build)
 endif()
+#-----------------------------------------
+if(TEXTURE_VIEW_LIBORI)
+    find_package(Orientation REQUIRED)
+    message(STATUS "Orientation found!")
+    include_directories(${Orientation_INCLUDE_DIRS})
+    message(STATUS ${Orientation_INCLUDE_DIRS})
+    add_definitions(${Orientation_DEFINITIONS})
+    find_package(proj4 QUIET)
+    if(proj4_FOUND)
+            include_directories(${proj4_INCLUDE_DIRS})
+            message( STATUS "proj4 found!" )
+    endif()
+endif()
+#-----------------------------------------
 
 add_subdirectory(libs)
 add_subdirectory(apps)
@@ -65,3 +85,4 @@ if(RESEARCH)
 ******************************************************************************
 ")
 endif()
+

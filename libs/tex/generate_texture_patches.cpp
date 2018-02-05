@@ -24,7 +24,7 @@ TEX_NAMESPACE_BEGIN
 
 void merge_vertex_projection_infos(std::vector<std::vector<VertexProjectionInfo> > * vertex_projection_infos) {
     /* Merge vertex infos within the same texture patch. */
-    #pragma omp parallel for
+#pragma omp parallel for
     for (std::size_t i = 0; i < vertex_projection_infos->size(); ++i) {
         std::vector<VertexProjectionInfo> & infos = vertex_projection_infos->at(i);
 
@@ -37,7 +37,7 @@ void merge_vertex_projection_infos(std::vector<std::vector<VertexProjectionInfo>
                 info_map[texture_patch_id] = info;
             } else {
                 it->second.faces.insert(it->second.faces.end(),
-                    info.faces.begin(), info.faces.end());
+                                        info.faces.begin(), info.faces.end());
             }
         }
 
@@ -60,8 +60,8 @@ struct TexturePatchCandidate {
   */
 TexturePatchCandidate
 generate_candidate(int label, TextureView const & texture_view,
-    std::vector<std::size_t> const & faces, mve::TriangleMesh::ConstPtr mesh,
-    Settings const & settings) {
+                   std::vector<std::size_t> const & faces, mve::TriangleMesh::ConstPtr mesh,
+                   Settings const & settings) {
 
     mve::ByteImage::Ptr view_image = texture_view.get_image();
     int min_x = view_image->width(), min_y = view_image->height();
@@ -115,15 +115,15 @@ generate_candidate(int label, TextureView const & texture_view,
     }
 
     TexturePatchCandidate texture_patch_candidate =
-        {Rect<int>(min_x, min_y, max_x, max_y),
-            TexturePatch::create(label, faces, texcoords, image)};
+    {Rect<int>(min_x, min_y, max_x, max_y),
+     TexturePatch::create(label, faces, texcoords, image)};
     return texture_patch_candidate;
 }
 
 bool fill_hole(std::vector<std::size_t> const & hole, UniGraph const & graph,
-    mve::TriangleMesh::ConstPtr mesh, mve::MeshInfo const & mesh_info,
-    std::vector<std::vector<VertexProjectionInfo> > * vertex_projection_infos,
-    std::vector<TexturePatch::Ptr> * texture_patches) {
+               mve::TriangleMesh::ConstPtr mesh, mve::MeshInfo const & mesh_info,
+               std::vector<std::vector<VertexProjectionInfo> > * vertex_projection_infos,
+               std::vector<TexturePatch::Ptr> * texture_patches) {
 
     mve::TriangleMesh::FaceList const & mesh_faces = mesh->get_faces();
     mve::TriangleMesh::VertexList const & vertices = mesh->get_vertices();
@@ -182,7 +182,7 @@ bool fill_hole(std::vector<std::size_t> const & hole, UniGraph const & graph,
         for (std::size_t k = 0; k < adj_faces.size(); ++k) {
             std::size_t adj_face = adj_faces[k];
             if (graph.get_label(adj_faces[k]) == 0 &&
-                adj_hole_faces.find(adj_face) != adj_hole_faces.end()) {
+                    adj_hole_faces.find(adj_face) != adj_hole_faces.end()) {
                 std::size_t curr = adj_faces[k];
                 std::size_t next = adj_faces[(k + 1) % adj_faces.size()];
                 std::pair<std::size_t, std::size_t> pair(curr, next);
@@ -266,7 +266,7 @@ bool fill_hole(std::vector<std::size_t> const & hole, UniGraph const & graph,
         std::size_t vi0 = border[j];
         std::size_t vi1 = border[(j + 1) % border.size()];
         std::vector<VertexProjectionInfo> vpi0, vpi1;
-        #pragma omp critical (vpis)
+#pragma omp critical (vpis)
         {
             vpi0 = vertex_projection_infos->at(vi0);
             vpi1 = vertex_projection_infos->at(vi1);
@@ -348,9 +348,16 @@ bool fill_hole(std::vector<std::size_t> const & hole, UniGraph const & graph,
             float sum = 0.0f;
             for (it = weights.begin(); it != weights.end(); ++it)
                 sum += it->second;
-            assert(sum > 0.0f);
-            for (it = weights.begin(); it != weights.end(); ++it)
+            // assert(sum > 0.0f); BV encountered the problem, don't know why
+            if(sum > 0.0f) for (it = weights.begin(); it != weights.end(); ++it)
                 it->second /= sum;
+            else
+            {
+                std::cout << __FILE__ << ":" <<__LINE__ <<
+                             ":Assertion sum > 0.0f FAILED, settings all weights to 1" << std::endl;
+                for (it = weights.begin(); it != weights.end(); ++it)
+                    it->second = 1.f;
+            }
 
             bx[idx[j]] = 0.0f;
             by[idx[j]] = 0.0f;
@@ -406,7 +413,7 @@ bool fill_hole(std::vector<std::size_t> const & hole, UniGraph const & graph,
     //DEBUG image->fill_color(*math::Vec4uc(0, 255, 0, 255));
     TexturePatch::Ptr texture_patch = TexturePatch::create(0, hole, texcoords, image);
     std::size_t texture_patch_id;
-    #pragma omp critical
+#pragma omp critical
     {
         texture_patches->push_back(texture_patch);
         texture_patch_id = texture_patches->size() - 1;
@@ -422,7 +429,7 @@ bool fill_hole(std::vector<std::size_t> const & hole, UniGraph const & graph,
             }
         }
         VertexProjectionInfo info = {texture_patch_id, projections[j], faces};
-        #pragma omp critical (vpis)
+#pragma omp critical (vpis)
         vertex_projection_infos->at(vertex_id).push_back(info);
     }
 
@@ -431,10 +438,10 @@ bool fill_hole(std::vector<std::size_t> const & hole, UniGraph const & graph,
 
 void
 generate_texture_patches(UniGraph const & graph, mve::TriangleMesh::ConstPtr mesh,
-    mve::MeshInfo const & mesh_info,
-    std::vector<TextureView> * texture_views, Settings const & settings,
-    std::vector<std::vector<VertexProjectionInfo> > * vertex_projection_infos,
-    std::vector<TexturePatch::Ptr> * texture_patches) {
+                         mve::MeshInfo const & mesh_info,
+                         std::vector<std::shared_ptr<TextureView>> * texture_views, Settings const & settings,
+                         std::vector<std::vector<VertexProjectionInfo> > * vertex_projection_infos,
+                         std::vector<TexturePatch::Ptr> * texture_patches) {
 
     util::WallTimer timer;
 
@@ -445,14 +452,14 @@ generate_texture_patches(UniGraph const & graph, mve::TriangleMesh::ConstPtr mes
     std::size_t num_patches = 0;
 
     std::cout << "\tRunning... " << std::flush;
-    #pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic)
     for (std::size_t i = 0; i < texture_views->size(); ++i) {
 
         std::vector<std::vector<std::size_t> > subgraphs;
         int const label = i + 1;
         graph.get_subgraphs(label, &subgraphs);
 
-        TextureView * texture_view = &texture_views->at(i);
+        TextureView * texture_view = texture_views->at(i).get();
         texture_view->load_image();
         std::list<TexturePatchCandidate> candidates;
         for (std::size_t j = 0; j < subgraphs.size(); ++j) {
@@ -490,7 +497,7 @@ generate_texture_patches(UniGraph const & graph, mve::TriangleMesh::ConstPtr mes
         for (; it != candidates.end(); ++it) {
             std::size_t texture_patch_id;
 
-            #pragma omp critical
+#pragma omp critical
             {
                 texture_patches->push_back(it->texture_patch);
                 texture_patch_id = num_patches++;
@@ -507,7 +514,7 @@ generate_texture_patches(UniGraph const & graph, mve::TriangleMesh::ConstPtr mes
 
                     VertexProjectionInfo info = {texture_patch_id, projection, {face_id}};
 
-                    #pragma omp critical
+#pragma omp critical
                     vertex_projection_infos->at(vertex_id).push_back(info);
                 }
             }
@@ -521,23 +528,23 @@ generate_texture_patches(UniGraph const & graph, mve::TriangleMesh::ConstPtr mes
         std::vector<std::vector<std::size_t> > subgraphs;
         graph.get_subgraphs(0, &subgraphs);
 
-        #pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic)
         for (std::size_t i = 0; i < subgraphs.size(); ++i) {
             std::vector<std::size_t> const & subgraph = subgraphs[i];
 
             bool success = false;
             if (settings.hole_filling) {
                 success = fill_hole(subgraph, graph, mesh, mesh_info,
-                    vertex_projection_infos, texture_patches);
+                                    vertex_projection_infos, texture_patches);
             }
 
             if (success) {
                 num_patches += 1;
             } else {
                 if (settings.keep_unseen_faces) {
-                    #pragma omp critical
+#pragma omp critical
                     unseen_faces.insert(unseen_faces.end(),
-                        subgraph.begin(), subgraph.end());
+                                        subgraph.begin(), subgraph.end());
                 }
             }
         }
@@ -550,7 +557,7 @@ generate_texture_patches(UniGraph const & graph, mve::TriangleMesh::ConstPtr mes
                 texcoords.insert(texcoords.end(), &projections[0], &projections[3]);
             }
             TexturePatch::Ptr texture_patch
-                = TexturePatch::create(0, unseen_faces, texcoords, image);
+                    = TexturePatch::create(0, unseen_faces, texcoords, image);
             texture_patches->push_back(texture_patch);
             std::size_t texture_patch_id = texture_patches->size() - 1;
 

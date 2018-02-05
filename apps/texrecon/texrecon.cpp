@@ -24,6 +24,10 @@
 
 #include "arguments.h"
 
+#ifdef TEXTURE_VIEW_LIBORI
+    #include "Orientation/modeleprojection.hpp"
+#endif
+
 int main(int argc, char **argv) {
     util::system::print_build_timestamp(argv[0]);
     util::system::register_segfault_handler();
@@ -33,6 +37,11 @@ int main(int argc, char **argv) {
               << " Due to use of the -DRESEARCH=ON compile option, this program is licensed "     << std::endl
               << " for research purposes only. Please pay special attention to the gco license."  << std::endl
               << "******************************************************************************" << std::endl;
+#endif
+
+#ifdef TEXTURE_VIEW_LIBORI
+    OrientationMATIS::ModeleProjection::InitAllIO();
+    std::cout << "WITH IGN/MATIS LibOrientation" << std::endl;
 #endif
 
     Timer timer;

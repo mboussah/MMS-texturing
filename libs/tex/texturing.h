@@ -11,7 +11,7 @@
 #define TEX_TEXTURING_HEADER
 
 #include <vector>
-
+#include <memory>
 #include "mve/mesh.h"
 #include "mve/mesh_info.h"
 
@@ -28,9 +28,12 @@
 
 #include "seam_leveling.h"
 
+//#include "Orientation/modeleprojection.hpp"
+//#include "Orientation/modeleprojectionconique.hpp"
+
 TEX_NAMESPACE_BEGIN
 
-typedef std::vector<TextureView> TextureViews;
+typedef std::vector<std::shared_ptr <TextureView>> TextureViews;
 typedef std::vector<TexturePatch::Ptr> TexturePatches;
 typedef std::vector<TextureAtlas::Ptr> TextureAtlases;
 typedef ObjModel Model;

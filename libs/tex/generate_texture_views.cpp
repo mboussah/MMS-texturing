@@ -16,12 +16,16 @@
 
 #include "progress_counter.h"
 #include "texturing.h"
+#include "texture_view_mvs.h"
+#ifdef TEXTURE_VIEW_LIBORI
+#include "texture_view_libori.h"
+#endif // TEXTURE_VIEW_LIBORI
 
 TEX_NAMESPACE_BEGIN
 
 void
 from_mve_scene(std::string const & scene_dir, std::string const & image_name,
-    std::vector<TextureView> * texture_views) {
+               std::vector<std::shared_ptr<TextureView>> * texture_views) {
 
     mve::Scene::Ptr scene;
     try {
@@ -45,7 +49,7 @@ from_mve_scene(std::string const & scene_dir, std::string const & image_name,
 
         if (!view->has_image(image_name, mve::IMAGE_TYPE_UINT8)) {
             std::cout << "Warning: View " << view->get_name() << " has no byte image "
-                << image_name << std::endl;
+                      << image_name << std::endl;
             continue;
         }
 
@@ -53,36 +57,43 @@ from_mve_scene(std::string const & scene_dir, std::string const & image_name,
 
         if (image_proxy->channels < 3) {
             std::cerr << "Image " << image_name << " of view " <<
-                view->get_name() << " is not a color image!" << std::endl;
+                         view->get_name() << " is not a color image!" << std::endl;
             exit(EXIT_FAILURE);
         }
+        std::shared_ptr<TextureView_mvs> tex_mvs = std::make_shared<TextureView_mvs>(view->get_id(), view->get_camera(), util::fs::abspath(
+                                                                                         util::fs::join_path(view->get_directory(), image_proxy->filename)));
 
-        texture_views->push_back(
-            TextureView(view->get_id(), view->get_camera(), util::fs::abspath(
-            util::fs::join_path(view->get_directory(), image_proxy->filename))));
+        texture_views->push_back(tex_mvs);
         view_counter.inc();
     }
 }
 
 void
-from_images_and_camera_files(std::string const & path, std::vector<TextureView> * texture_views) {
+from_images_and_camera_files(std::string const & path, std::vector<std::shared_ptr <TextureView>> * texture_views) {
     util::fs::Directory dir(path);
     std::sort(dir.begin(), dir.end());
-    std::vector<std::string> files;
+    std::vector<std::string> cam_files, ori_files;
+    //std::cout << "dir.size() " << dir.size() << std::endl;
     for (std::size_t i = 0; i < dir.size(); ++i) {
         util::fs::File const & cam_file = dir[i];
+        //std::cout << "cam_file.name" << cam_file.name << std::endl;
         if (cam_file.is_dir) continue;
 
         std::string cam_file_ext = util::string::uppercase(util::string::right(cam_file.name, 4));
-        if (cam_file_ext != ".CAM") continue;
-
-        std::string prefix = util::string::left(cam_file.name, cam_file.name.size() - 4);
+        std::string orixml_file_ext = util::string::uppercase(util::string::right(cam_file.name, 8));
+        if (cam_file_ext != ".CAM" && orixml_file_ext != ".ORI.XML") continue;
+        int chars_to_remove = 4;
+        if (orixml_file_ext == ".ORI.XML") chars_to_remove = 8;
+        std::string prefix = util::string::left(cam_file.name, cam_file.name.size() - chars_to_remove);
         if (prefix.empty()) continue;
 
         /* Find corresponding image file. */
         int step = 1;
-        for (std::size_t j = i + 1; j < dir.size(); j += step) {
+        // BV: fixed a bug (last file could not be associated with an image)
+        if(i == dir.size()-1) step = -1;
+        for (std::size_t j = i + step; j < dir.size(); j += step) {
             util::fs::File const & img_file = dir[j];
+            //std::cout << "img_file.name " << img_file.name << std::endl;
 
             /* Since the files are sorted we can break - no more files with the same prefix exist. */
             if (util::string::left(img_file.name, prefix.size()) != prefix) {
@@ -97,21 +108,28 @@ from_images_and_camera_files(std::string const & path, std::vector<TextureView> 
 
             /* Image file (based on extension)? */
             std::string img_file_ext = util::string::uppercase(util::string::right(img_file.name, 4));
-            if (img_file_ext != ".PNG" && img_file_ext != ".JPG" &&
-                img_file_ext != "TIFF" && img_file_ext != "JPEG") continue;
+            if (img_file_ext != ".PNG" && img_file_ext != ".JPG" && img_file_ext != ".TIF" &&
+                    img_file_ext != "TIFF" && img_file_ext != "JPEG") continue;
 
-            files.push_back(cam_file.get_absolute_name());
-            files.push_back(img_file.get_absolute_name());
+            if(chars_to_remove == 8)
+            {
+                ori_files.push_back(cam_file.get_absolute_name());
+                ori_files.push_back(img_file.get_absolute_name());
+            } else
+            {
+                cam_files.push_back(cam_file.get_absolute_name());
+                cam_files.push_back(img_file.get_absolute_name());
+            }
             break;
         }
     }
 
-    ProgressCounter view_counter("\tLoading", files.size() / 2);
-    #pragma omp parallel for
-    for (std::size_t i = 0; i < files.size(); i += 2) {
+    ProgressCounter view_counter("\tLoading cams", cam_files.size() / 2);
+#pragma omp parallel for
+    for (std::size_t i = 0; i < cam_files.size(); i += 2) {
         view_counter.progress<SIMPLE>();
-        std::string cam_file = files[i];
-        std::string img_file = files[i + 1];
+        std::string cam_file = cam_files[i];
+        std::string img_file = cam_files[i + 1];
 
         /* Read CAM file. */
         std::ifstream infile(cam_file.c_str(), std::ios::binary);
@@ -123,7 +141,7 @@ from_images_and_camera_files(std::string const & path, std::vector<TextureView> 
         util::Tokenizer tok_ext, tok_int;
         tok_ext.split(cam_ext_str);
         tok_int.split(cam_int_str);
-        #pragma omp critical
+#pragma omp critical
         if (tok_ext.size() != 12 || tok_int.size() < 1) {
             std::cerr << "Invalid CAM file: " << util::fs::basename(cam_file) << std::endl;
             std::exit(EXIT_FAILURE);
@@ -152,31 +170,48 @@ from_images_and_camera_files(std::string const & path, std::vector<TextureView> 
             mve::ByteImage::Ptr image = mve::image::load_file(img_file);
             if (cam_info.dist[1] != 0.0f) {
                 image = mve::image::image_undistort_bundler<uint8_t>(image,
-                    cam_info.flen, cam_info.dist[0], cam_info.dist[1]);
+                                                                     cam_info.flen, cam_info.dist[0], cam_info.dist[1]);
             } else {
                 image = mve::image::image_undistort_vsfm<uint8_t>(image,
-                    cam_info.flen, cam_info.dist[0]);
+                                                                  cam_info.flen, cam_info.dist[0]);
             }
 
             image_file = std::string("/tmp/") + util::fs::basename(img_file);
             mve::image::save_png_file(image, image_file);
         }
+        std::shared_ptr<TextureView_mvs> tex_mvs_scene = std::make_shared<TextureView_mvs>(i / 2, cam_info, image_file);
 
-        #pragma omp critical
-        texture_views->push_back(TextureView(i / 2, cam_info, image_file));
-
+#pragma omp critical
+        texture_views->push_back(tex_mvs_scene);
         view_counter.inc();
+    }
+
+    //#pragma omp parallel for
+    if(ori_files.size() > 0)
+    {
+        std::cout << "Found " << ori_files.size()/2 << " LibOrientation TextureView(s):" << std::endl;
+#ifdef TEXTURE_VIEW_LIBORI
+        for (std::size_t i = 0; i < ori_files.size(); i += 2) {
+            std::string ori_file = ori_files[i];
+            std::string img_file = ori_files[i + 1];
+            std::cout << "Loading " <<  img_file << " and .ori.xml" << std::endl;
+            std::shared_ptr<TextureView_libori> tex_libori = std::make_shared<TextureView_libori>(i / 2, ori_file, img_file);
+            texture_views->push_back(tex_libori);
+        }
+#else // TEXTURE_VIEW_LIBORI
+        std::cout << "WARNING: compile with TEXTURE_VIEW_LIBORI option ON to use them" << std::endl;
+#endif // TEXTURE_VIEW_LIBORI
     }
 }
 
 void
-from_nvm_scene(std::string const & nvm_file, std::vector<TextureView> * texture_views) {
+from_nvm_scene(std::string const & nvm_file, std::vector<std::shared_ptr <TextureView>> * texture_views) {
     std::vector<mve::NVMCameraInfo> nvm_cams;
     mve::Bundle::Ptr bundle = mve::load_nvm_bundle(nvm_file, &nvm_cams);
     mve::Bundle::Cameras& cameras = bundle->get_cameras();
 
     ProgressCounter view_counter("\tLoading", cameras.size());
-    #pragma omp parallel for
+#pragma omp parallel for
     for (std::size_t i = 0; i < cameras.size(); ++i) {
         view_counter.progress<SIMPLE>();
         mve::CameraInfo& mve_cam = cameras[i];
@@ -188,20 +223,23 @@ from_nvm_scene(std::string const & nvm_file, std::vector<TextureView> * texture_
         mve_cam.flen = mve_cam.flen / static_cast<float>(maxdim);
 
         image = mve::image::image_undistort_vsfm<uint8_t>
-            (image, mve_cam.flen, nvm_cam.radial_distortion);
+                (image, mve_cam.flen, nvm_cam.radial_distortion);
 
         std::string image_file = std::string("/tmp/") + util::fs::basename(nvm_cam.filename);
         mve::image::save_png_file(image, image_file);
 
-        #pragma omp critical
-        texture_views->push_back(TextureView(i, mve_cam, image_file));
+        std::shared_ptr<TextureView_mvs> tex_mvs_nvm = std::make_shared<TextureView_mvs>(i, mve_cam, image_file);
+
+#pragma omp critical
+
+        texture_views->push_back(tex_mvs_nvm);
 
         view_counter.inc();
     }
 }
 
 void
-generate_texture_views(std::string const & in_scene, std::vector<TextureView> * texture_views) {
+generate_texture_views(std::string const & in_scene, std::vector<std::shared_ptr <TextureView>> * texture_views) {
     /* Determine input format. */
 
     /* BUNDLEFILE */
@@ -227,10 +265,10 @@ generate_texture_views(std::string const & in_scene, std::vector<TextureView> * 
     std::size_t num_views = texture_views->size();
     if (num_views == 0) {
         std::cerr << "No proper input scene descriptor given." << std::endl
-            << "A input descriptor can be:" << std::endl
-            << "BUNDLE_FILE - a bundle file (currently onle .nvm files are supported)" << std::endl
-            << "SCENE_FOLDER - a folder containing images and .cam files" << std::endl
-            << "MVE_SCENE::EMBEDDING - a mve scene and embedding" << std::endl;
+                  << "A input descriptor can be:" << std::endl
+                  << "BUNDLE_FILE - a bundle file (currently onle .nvm files are supported)" << std::endl
+                  << "SCENE_FOLDER - a folder containing images and .cam files" << std::endl
+                  << "MVE_SCENE::EMBEDDING - a mve scene and embedding" << std::endl;
         exit(EXIT_FAILURE);
     }
 }

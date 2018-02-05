@@ -1,3 +1,4 @@
+set(HTTP_PROXY "http://proxy.ign.fr:3128")
 if(RESEARCH)
     externalproject_add(ext_gco
         PREFIX          ext_gco

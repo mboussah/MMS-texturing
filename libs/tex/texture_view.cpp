@@ -17,10 +17,10 @@
 
 TEX_NAMESPACE_BEGIN
 
-TextureView::TextureView(std::size_t id, mve::CameraInfo const & camera,
-    std::string const & image_file)
+TextureView::TextureView(std::size_t id,
+                         std::string const & image_file)
     : id(id), image_file(image_file) {
-
+    /*-------------------------------------
     mve::image::ImageHeaders header;
     try {
          header = mve::image::load_file_headers(image_file);
@@ -32,11 +32,12 @@ TextureView::TextureView(std::size_t id, mve::CameraInfo const & camera,
 
     width = header.width;
     height = header.height;
-
+    ---------------------------------------
     camera.fill_calibration(*projection, width, height);
     camera.fill_camera_pos(*pos);
     camera.fill_viewing_direction(*viewdir);
     camera.fill_world_to_cam(*world_to_cam);
+    --------------------------------------*/
 }
 
 void
@@ -44,19 +45,29 @@ TextureView::generate_validity_mask(void) {
     assert(image != NULL);
     validity_mask.resize(width * height, true);
     mve::ByteImage::Ptr checked = mve::ByteImage::create(width, height, 1);
-
     std::list<math::Vec2i> queue;
-
     /* Start from the corners. */
     queue.push_back(math::Vec2i(0,0));
-    checked->at(0, 0, 0) = 255;
     queue.push_back(math::Vec2i(0, height - 1));
-    checked->at(0, height - 1, 0) = 255;
     queue.push_back(math::Vec2i(width - 1, 0));
-    checked->at(width - 1, 0, 0) = 255;
     queue.push_back(math::Vec2i(width - 1, height - 1));
-    checked->at(width - 1, height - 1, 0) = 255;
+    // BV: add edges middles (cam 301 & 303 masks don't touch corners)
+    //------------------------------------------------
+    queue.push_back(math::Vec2i(0, height/2));
+    queue.push_back(math::Vec2i(width - 1, height/2));
+    queue.push_back(math::Vec2i(width/2, 0));
+    queue.push_back(math::Vec2i(width/2, height-1));
 
+    for(std::list<math::Vec2i>::iterator it=queue.begin(); it!=queue.end(); it++)
+        checked->at((*it)[0], (*it)[1], 0) = 255;
+    //---------------------------------------------------
+
+//    checked->at(0, 0, 0) = 255;
+//    checked->at(0, height - 1, 0) = 255;
+//    checked->at(width - 1, 0, 0) = 255;
+//    checked->at(width - 1, height - 1, 0) = 255;
+
+    int i_mask = 0;
     while (!queue.empty()) {
         math::Vec2i pixel = queue.front();
         queue.pop_front();
@@ -86,11 +97,13 @@ TextureView::generate_validity_mask(void) {
                     if (checked->at(nx, ny, 0) == 0) {
                         queue.push_front(npixel);
                         checked->at(nx, ny, 0) = 255;
+                        i_mask++;
                     }
                 }
             }
         }
     }
+    if(i_mask>0) std::cout << i_mask << " masked pixels" << std::endl;
 }
 
 void
@@ -133,7 +146,7 @@ TextureView::erode_validity_mask(void) {
 
 void
 TextureView::get_face_info(math::Vec3f const & v1, math::Vec3f const & v2,
-    math::Vec3f const & v3, FaceProjectionInfo * face_info, Settings const & settings) const {
+                           math::Vec3f const & v3, FaceProjectionInfo * face_info, Settings const & settings) const {
 
     assert(image != NULL);
     assert(settings.data_term != DATA_TERM_GMI || gradient_magnitude != NULL);
@@ -206,7 +219,7 @@ TextureView::get_face_info(math::Vec3f const & v1, math::Vec3f const & v2,
 
                 if (settings.outlier_removal != OUTLIER_REMOVAL_NONE) {
                     for (std::size_t i = 0; i < 3; i++){
-                         color[i] = static_cast<double>(image->at(x, y, i)) / 255.0;
+                        color[i] = static_cast<double>(image->at(x, y, i)) / 255.0;
                     }
                     colors += color;
                 }
@@ -236,17 +249,17 @@ TextureView::get_face_info(math::Vec3f const & v1, math::Vec3f const & v2,
         } else {
             math::Vec3d c1, c2, c3;
             for (std::size_t i = 0; i < 3; ++i) {
-                 c1[i] = static_cast<double>(image->linear_at(p1[0], p1[1], i)) / 255.0;
-                 c2[i] = static_cast<double>(image->linear_at(p2[0], p2[1], i)) / 255.0;
-                 c3[i] = static_cast<double>(image->linear_at(p3[0], p3[1], i)) / 255.0;
+                c1[i] = static_cast<double>(image->linear_at(p1[0], p1[1], i)) / 255.0;
+                c2[i] = static_cast<double>(image->linear_at(p2[0], p2[1], i)) / 255.0;
+                c3[i] = static_cast<double>(image->linear_at(p3[0], p3[1], i)) / 255.0;
             }
             face_info->mean_color = ((c1 + c2 + c3) / 3.0);
         }
     }
 
     switch (settings.data_term) {
-        case DATA_TERM_AREA: face_info->quality = area; break;
-        case DATA_TERM_GMI:  face_info->quality = gmi; break;
+    case DATA_TERM_AREA: face_info->quality = area; break;
+    case DATA_TERM_GMI:  face_info->quality = gmi; break;
     }
 }
 
@@ -257,7 +270,7 @@ TextureView::valid_pixel(math::Vec2f pixel) const {
 
     /* The center of a pixel is in the middle. */
     bool valid = (x >= 0.0f && x < static_cast<float>(width - 1)
-        && y >= 0.0f && y < static_cast<float>(height - 1));
+                  && y >= 0.0f && y < static_cast<float>(height - 1));
 
     if (valid && validity_mask.size() == static_cast<std::size_t>(width * height)) {
         /* Only pixel which can be correctly interpolated are valid. */
@@ -282,7 +295,7 @@ TextureView::valid_pixel(math::Vec2f pixel) const {
 
 void
 TextureView::export_triangle(math::Vec3f v1, math::Vec3f v2, math::Vec3f v3,
-    std::string const & filename) const {
+                             std::string const & filename) const {
     assert(image != NULL);
     math::Vec2f p1 = get_pixel_coords(v1);
     math::Vec2f p2 = get_pixel_coords(v2);
@@ -300,7 +313,7 @@ TextureView::export_triangle(math::Vec3f v1, math::Vec3f v2, math::Vec3f v3,
 
     assert(width > 0 && height > 0);
     mve::image::save_png_file(mve::image::crop(image, width, height, left, top,
-        *math::Vec3uc(255, 0, 255)), filename);
+                                               *math::Vec3uc(255, 0, 255)), filename);
 }
 
 void
