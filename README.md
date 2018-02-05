@@ -1,20 +1,15 @@
-MVS-Texturing
+MMS-Texturing
 --------------------------------------------------------------------------------
 
-Welcome to our project that textures 3D reconstructions from images.
+Welcome to our project that textures 3D reconstructions from Mobile Mapping System.
 This project focuses on 3D reconstructions generated using structure from
 motion and multi-view stereo techniques, however, it is not limited to this
 setting.
 
-The algorithm was published in Sept. 2014 on the
+The original algorithm was published in Sept. 2014 on the
 *European Conference on Computer Vision*. Please refer to our project website
 (http://www.gcc.tu-darmstadt.de/home/proj/texrecon/)
 for the paper and further information.
-
-*Please be aware that while the interface of the `texrecon` application is
-relatively stable the interface of the `tex` library is currently subject to
-frequent changes.*
-
 
 Dependencies
 --------------------------------------------------------------------------------
@@ -47,13 +42,13 @@ thus provide the `-DRESEARCH=ON `flag (see compilation section below).*
 Compilation ![Build Status](https://travis-ci.org/nmoehrle/mvs-texturing.svg)
 --------------------------------------------------------------------------------
 
-1.  `git clone https://github.com/nmoehrle/mvs-texturing.git`
-2.  `cd mvs-texturing`
+1.  `git clone https://github.com/mboussah/MMS-texturing.git`
+2.  `cd MMS-texturing`
 3.  `mkdir build && cd build`
 4.  Generate make file
     * `cmake ..`
     * **IMPORTANT**: For research purposes only you can use
-    `cmake -DRESEARCH=ON ..`
+    `cmake -DRESEARCH=ON -DTEXTURE_VIEW_LIBORI=ON ..`
     instead. This downloads and links against Olga Veksler et al.'s multi-label
     graph cut optimization, which tends to find better optima and gives better
     texturing results. However, it is patented and can only be licensed for
@@ -78,20 +73,8 @@ Execution
 --------------------------------------------------------------------------------
 
 As input our algorithm requires a triangulated 3D model and images that are
-registered against this model. One way to obtain this is to:
-*   import images, infer camera parameters and reconstruct depth maps
-    using the [Multi-View Environment]
-    (http://www.gcc.tu-darmstadt.de/home/proj/mve/),
-    and
-*   fuse these depth maps into a combined 3D model using the
-    [Floating Scale Surface Reconstruction]
-    (http://www.gcc.tu-darmstadt.de/home/proj/fssr/)
-    algorithm.
+registered against this model.
 
-A quick guide on how to use these applications can be found on our project [website](http://www.gcc.tu-darmstadt.de/home/proj/texrecon/).
-
-By starting the application without any parameters and you will get a
-description of the expected file formats and optional parameters.
 
 
 Troubleshooting
@@ -120,7 +103,7 @@ optimization which
 *Cited from the multi-label graph cut optimization README file. See that file
 for further information.*
 
-If you use our texturing code for research purposes, please cite our paper:
+If you use this texturing code for research purposes, please cite this paper:
 ```
 @inproceedings{Waechter2014Texturing,
   title    = {Let There Be Color! --- {L}arge-Scale Texturing of {3D} Reconstructions},
@@ -132,11 +115,3 @@ If you use our texturing code for research purposes, please cite our paper:
 ```
 
 
-Contact
---------------------------------------------------------------------------------
-If you have trouble compiling or using this software, if you found a bug or if
-you have an important feature request, please use the issue tracker of github:
-https://github.com/nmoehrle/mvs-texturing
-
-For further questions you may contact us at
-mvs-texturing(at)gris.informatik.tu-darmstadt.de
