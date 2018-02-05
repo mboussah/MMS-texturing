@@ -7,7 +7,7 @@ motion and multi-view stereo techniques, however, it is not limited to this
 setting.
 
 The original algorithm was published in Sept. 2014 on the
-*European Conference on Computer Vision*. Please refer to our project website
+*European Conference on Computer Vision*. Please refer to the project website
 (http://www.gcc.tu-darmstadt.de/home/proj/texrecon/)
 for the paper and further information.
 
